@@ -1,0 +1,1313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Chatbot with RAG</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #4361ee;
+            --primary-dark: #3a0ca3;
+            --secondary: #f72585;
+            --success: #4cc9f0;
+            --warning: #ff9e00;
+            --danger: #ef233c;
+            --light: #f8f9fa;
+            --dark: #212529;
+            --gray: #adb5bd;
+            --gray-light: #e9ecef;
+            --sidebar-width: 300px;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background-color: #f5f7fb;
+            color: var(--dark);
+            line-height: 1.6;
+        }
+
+        .container {
+            display: flex;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        
+        /* Sidebar Styles */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            z-index: 100;
+            height: 100vh;
+            position: fixed;
+            left: 0;
+            top: 0;
+            overflow-y: auto;
+        }
+        
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--gray-light);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-weight: 700;
+            font-size: 1.5rem;
+            color: var(--primary);
+        }
+        
+        .close-sidebar {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 1.2rem;
+            cursor: pointer;
+            color: var(--gray);
+        }
+        
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .section-title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: var(--dark);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .section-title i {
+            font-size: 1.1rem;
+        }
+        
+        /* Upload Section */
+        .upload-section {
+            margin-bottom: 30px;
+        }
+        
+        .file-upload {
+            border: 2px dashed var(--gray);
+            border-radius: 12px;
+            padding: 25px;
+            text-align: center;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .file-upload:hover {
+            border-color: var(--primary);
+            background-color: rgba(67, 97, 238, 0.05);
+        }
+        
+        .file-upload i {
+            font-size: 2rem;
+            color: var(--gray);
+            margin-bottom: 10px;
+        }
+        
+        .file-upload p {
+            color: var(--gray);
+            margin-bottom: 5px;
+        }
+        
+        .file-input {
+            display: none;
+        }
+        
+        .upload-btn {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .upload-btn:hover {
+            background-color: var(--primary-dark);
+        }
+        
+        .upload-btn:disabled {
+            background-color: var(--gray);
+            cursor: not-allowed;
+        }
+        
+        .upload-status {
+            margin-top: 15px;
+            font-size: 0.9rem;
+        }
+        
+        /* Sessions Section */
+        .sessions-section {
+            margin-bottom: 30px;
+        }
+        
+        .sessions-list {
+            margin-bottom: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .session-item {
+            padding: 12px 15px;
+            margin-bottom: 8px;
+            background-color: var(--gray-light);
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s;
+        }
+        
+        .session-item:hover {
+            background-color: #dfe6f5;
+        }
+        
+        .session-item.active {
+            background-color: var(--primary);
+            color: white;
+        }
+        
+        .session-info {
+            flex: 1;
+        }
+        
+        .session-name {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        
+        .session-date {
+            font-size: 0.8rem;
+            opacity: 0.8;
+        }
+        
+        .session-actions {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .session-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--gray);
+            font-size: 0.9rem;
+            transition: color 0.3s;
+        }
+        
+        .session-btn:hover {
+            color: var(--dark);
+        }
+        
+        .session-item.active .session-btn {
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        .session-item.active .session-btn:hover {
+            color: white;
+        }
+        
+        .new-chat-btn {
+            width: 100%;
+            padding: 12px;
+            background-color: white;
+            color: var(--primary);
+            border: 1px solid var(--primary);
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .new-chat-btn:hover {
+            background-color: var(--primary);
+            color: white;
+        }
+        
+        /* Settings Section */
+        .settings-section {
+            margin-top: auto;
+            padding-top: 20px;
+            border-top: 1px solid var(--gray-light);
+        }
+        
+        .settings-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+        
+        .settings-content {
+            transition: all 0.3s ease;
+        }
+        
+        .settings-content.collapsed {
+            display: none;
+        }
+        
+        .toggle-settings {
+            background: none;
+            border: none;
+            color: var(--gray);
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: transform 0.3s ease;
+        }
+        
+        .toggle-settings.collapsed {
+            transform: rotate(180deg);
+        }
+        
+        .settings-options {
+            margin-top: 15px;
+        }
+        
+        .setting-item {
+            margin-bottom: 15px;
+        }
+        
+        .setting-item label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: var(--dark);
+        }
+        
+        .setting-select, .setting-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--gray-light);
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+        
+        .setting-slider {
+            width: 100%;
+            margin: 10px 0;
+        }
+        
+        .save-settings-btn {
+            width: 100%;
+            padding: 10px;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .save-settings-btn:hover {
+            background-color: var(--primary-dark);
+        }
+        
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            margin-left: var(--sidebar-width);
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .header {
+            background: white;
+            padding: 15px 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .menu-toggle {
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 12px;
+            cursor: pointer;
+            display: none;
+        }
+        
+        .current-session {
+            font-weight: 600;
+            color: var(--dark);
+        }
+        
+        .chat-container {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background-color: #f0f2f5;
+        }
+        
+        .welcome-message {
+            text-align: center;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        
+        .welcome-message i {
+            font-size: 3rem;
+            color: var(--primary);
+            margin-bottom: 20px;
+        }
+        
+        .welcome-message h2 {
+            margin-bottom: 15px;
+            color: var(--dark);
+        }
+        
+        .welcome-message p {
+            color: var(--gray);
+            margin-bottom: 10px;
+        }
+        
+        .message {
+            margin-bottom: 20px;
+            max-width: 70%;
+            padding: 15px 20px;
+            border-radius: 18px;
+            line-height: 1.5;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .user-message {
+            background-color: var(--primary);
+            color: white;
+            margin-left: auto;
+            border-bottom-right-radius: 5px;
+        }
+        
+        .bot-message {
+            background-color: white;
+            color: var(--dark);
+            margin-right: auto;
+            border-bottom-left-radius: 5px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .message-content {
+            margin-bottom: 8px;
+        }
+        
+        .message-time {
+            font-size: 0.75rem;
+            opacity: 0.7;
+            text-align: right;
+        }
+        
+        .message-sources {
+            font-size: 0.8rem;
+            margin-top: 8px;
+            color: var(--success);
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .input-area {
+            padding: 20px;
+            background: white;
+            display: flex;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+            gap: 10px;
+        }
+        
+        .message-input {
+            flex: 1;
+            padding: 14px 20px;
+            border: 1px solid var(--gray-light);
+            border-radius: 24px;
+            outline: none;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+        
+        .message-input:focus {
+            border-color: var(--primary);
+        }
+        
+        .send-btn {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 24px;
+            padding: 0 24px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .send-btn:hover {
+            background-color: var(--primary-dark);
+        }
+        
+        .send-btn:disabled {
+            background-color: var(--gray);
+            cursor: not-allowed;
+        }
+        
+        /* Status Messages */
+        .status-message {
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .status-success {
+            background-color: rgba(76, 201, 240, 0.1);
+            color: var(--success);
+            border-left: 3px solid var(--success);
+        }
+        
+        .status-error {
+            background-color: rgba(239, 35, 60, 0.1);
+            color: var(--danger);
+            border-left: 3px solid var(--danger);
+        }
+        
+        .status-warning {
+            background-color: rgba(255, 158, 0, 0.1);
+            color: var(--warning);
+            border-left: 3px solid var(--warning);
+        }
+        
+        /* Loading Animation */
+        .loading-dots {
+            display: inline-flex;
+            gap: 4px;
+        }
+        
+        .loading-dots span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: currentColor;
+            animation: bounce 1.5s infinite ease-in-out;
+        }
+        
+        .loading-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        
+        .loading-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+        
+        /* Accessibility */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+        
+        .skip-link {
+            position: absolute;
+            top: -40px;
+            left: 0;
+            background: #000;
+            color: white;
+            padding: 8px;
+            z-index: 10000;
+            transition: top 0.3s;
+        }
+        
+        .skip-link:focus {
+            top: 0;
+        }
+        
+        button:focus,
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: 2px solid var(--primary);
+            outline-offset: 2px;
+        }
+        
+        .session-item:focus {
+            outline: 2px solid var(--primary);
+            outline-offset: 2px;
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 900px) {
+            .sidebar {
+                position: fixed;
+                transform: translateX(-100%);
+                height: 100vh;
+                width: 300px;
+                transition: transform 0.3s ease;
+            }
+            
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            
+            .close-sidebar {
+                display: block;
+            }
+            
+            .menu-toggle {
+                display: block;
+            }
+            
+            .main-content {
+                margin-left: 0;
+                width: 100%;
+            }
+            
+            .message {
+                max-width: 85%;
+            }
+        }
+        
+        @media (max-width: 600px) {
+            .sidebar {
+                width: 100%;
+            }
+            
+            .message {
+                max-width: 90%;
+            }
+            
+            .input-area {
+                padding: 15px;
+            }
+            
+            .send-btn span {
+                display: none;
+            }
+            
+            .send-btn {
+                padding: 0 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    
+    <div class="container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">PDF Chatbot</div>
+                <button class="close-sidebar" id="close-sidebar" aria-label="Close sidebar">
+                    <i class="fas fa-times"></i>
+                    <span class="sr-only">Close sidebar</span>
+                </button>
+            </div>
+            <div class="sidebar-content">
+                <!-- Upload Section -->
+                <div class="upload-section">
+                    <h3 class="section-title">
+                        <i class="fas fa-file-pdf"></i>
+                        <span>Upload PDFs</span>
+                    </h3>
+                    <div class="file-upload" id="file-upload-area" role="button" aria-labelledby="file-upload-label">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <p id="file-upload-label">Click to upload or drag and drop PDF files</p>
+                        <input type="file" class="file-input" id="file-input" multiple accept=".pdf" aria-describedby="file-upload-label">
+                    </div>
+                    <div id="file-list"></div>
+                    <button class="upload-btn" id="process-btn" disabled aria-label="Process uploaded documents">
+                        <i class="fas fa-cog"></i>
+                        <span>Process Documents</span>
+                    </button>
+                    <div class="upload-status" id="upload-status"></div>
+                </div>
+                
+                <!-- Sessions Section -->
+                <div class="sessions-section">
+                    <h3 class="section-title">
+                        <i class="fas fa-comments"></i>
+                        <span>Chat Sessions</span>
+                    </h3>
+                    <div class="sessions-list" id="sessions-list"></div>
+                    <button class="new-chat-btn" id="new-chat-btn" aria-label="Create new chat session">
+                        <i class="fas fa-plus"></i>
+                        <span>New Chat</span>
+                    </button>
+                </div>
+                
+                <!-- Settings Section -->
+                <div class="settings-section">
+                    <div class="settings-header" id="settings-header">
+                        <h3 class="section-title">
+                            <i class="fas fa-cog"></i>
+                            <span>Settings</span>
+                        </h3>
+                        <button class="toggle-settings" id="toggle-settings" aria-label="Toggle settings">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                    </div>
+                    <div class="settings-content" id="settings-content">
+                        <div class="settings-options">
+                            <div class="setting-item">
+                                <label for="model-select">AI Model:</label>
+                                <select id="model-select" class="setting-select">
+                                    <option value="gemini-pro" selected>Gemini Pro</option>
+                                    <option value="other-model">Other Model</option>
+                                </select>
+                            </div>
+                            <div class="setting-item">
+                                <label for="temperature">Temperature (higher = more creative):</label>
+                                <input type="range" id="temperature" min="0" max="1" step="0.1" value="0.7" class="setting-slider" 
+                                    aria-valuetext="Temperature setting: 0.7, higher values make responses more creative">
+                                <span id="temperature-value">0.7</span>
+                            </div>
+                            <div class="setting-item">
+                                <label for="max-tokens">Max Tokens (response length):</label>
+                                <input type="number" id="max-tokens" min="50" max="2000" value="1000" class="setting-input" 
+                                    aria-describedby="max-tokens-help">
+                                <span id="max-tokens-help" class="sr-only">Higher values allow for longer responses</span>
+                            </div>
+                            <div class="setting-item">
+                                <button id="save-settings" class="save-settings-btn" aria-label="Save application settings">
+                                    <i class="fas fa-save"></i>
+                                    Save Settings
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="main-content" id="main-content">
+            <header class="header">
+                <button class="menu-toggle" id="menu-toggle" aria-label="Toggle navigation menu">
+                    <i class="fas fa-bars"></i>
+                    <span class="sr-only">Toggle navigation menu</span>
+                </button>
+                <div class="current-session" id="current-session">No active session</div>
+            </header>
+            
+            <div aria-live="polite" aria-atomic="true" class="sr-only" id="a11y-status"></div>
+            
+            <div class="chat-container" id="chat-container">
+                <div class="welcome-message" id="welcome-message">
+                    <i class="fas fa-robot"></i>
+                    <h2>Welcome to PDF Chatbot</h2>
+                    <p>Upload PDF files to get started, then ask questions about their content.</p>
+                    <p>Select a chat session or create a new one to begin.</p>
+                </div>
+            </div>
+            
+            <div class="input-area">
+                <input type="text" class="message-input" id="message-input" placeholder="Type your message here..." disabled>
+                <button class="send-btn" id="send-btn" disabled aria-label="Send message">
+                    <i class="fas fa-paper-plane"></i>
+                    <span>Send</span>
+                </button>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Global variables
+        let currentSessionId = null;
+        let sessions = {};
+        let uploadedFiles = [];
+        
+        // DOM elements
+        const sidebar = document.getElementById('sidebar');
+        const menuToggle = document.getElementById('menu-toggle');
+        const closeSidebar = document.getElementById('close-sidebar');
+        const fileInput = document.getElementById('file-input');
+        const fileUploadArea = document.getElementById('file-upload-area');
+        const fileList = document.getElementById('file-list');
+        const processBtn = document.getElementById('process-btn');
+        const uploadStatus = document.getElementById('upload-status');
+        const sessionsList = document.getElementById('sessions-list');
+        const newChatBtn = document.getElementById('new-chat-btn');
+        const currentSessionElement = document.getElementById('current-session');
+        const chatContainer = document.getElementById('chat-container');
+        const welcomeMessage = document.getElementById('welcome-message');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        const modelSelect = document.getElementById('model-select');
+        const temperatureSlider = document.getElementById('temperature');
+        const temperatureValue = document.getElementById('temperature-value');
+        const maxTokensInput = document.getElementById('max-tokens');
+        const saveSettingsBtn = document.getElementById('save-settings');
+        const settingsHeader = document.getElementById('settings-header');
+        const settingsContent = document.getElementById('settings-content');
+        const toggleSettingsBtn = document.getElementById('toggle-settings');
+        
+        // Event listeners
+        menuToggle.addEventListener('click', () => {
+            sidebar.classList.add('open');
+        });
+        
+        closeSidebar.addEventListener('click', () => {
+            sidebar.classList.remove('open');
+        });
+        
+        fileUploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        fileInput.addEventListener('change', handleFileSelection);
+        
+        fileUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUploadArea.style.borderColor = 'var(--primary)';
+            fileUploadArea.style.backgroundColor = 'rgba(67, 97, 238, 0.05)';
+        });
+        
+        fileUploadArea.addEventListener('dragleave', () => {
+            fileUploadArea.style.borderColor = 'var(--gray)';
+            fileUploadArea.style.backgroundColor = 'transparent';
+        });
+        
+        fileUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUploadArea.style.borderColor = 'var(--gray)';
+            fileUploadArea.style.backgroundColor = 'transparent';
+            
+            if (e.dataTransfer.files.length > 0) {
+                fileInput.files = e.dataTransfer.files;
+                handleFileSelection({ target: fileInput });
+            }
+        });
+        
+        processBtn.addEventListener('click', processDocuments);
+        newChatBtn.addEventListener('click', createNewSession);
+        sendBtn.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+        
+        // Settings functionality
+        settingsHeader.addEventListener('click', toggleSettings);
+        temperatureSlider.addEventListener('input', () => {
+            temperatureValue.textContent = temperatureSlider.value;
+        });
+        saveSettingsBtn.addEventListener('click', saveSettings);
+        
+        // Initialize
+        loadSessions();
+        loadSettings();
+        
+        // Functions
+        function toggleSettings() {
+            settingsContent.classList.toggle('collapsed');
+            toggleSettingsBtn.classList.toggle('collapsed');
+            
+            const isCollapsed = settingsContent.classList.contains('collapsed');
+            toggleSettingsBtn.setAttribute('aria-expanded', !isCollapsed);
+        }
+        
+        function handleFileSelection(event) {
+            const files = Array.from(event.target.files);
+            if (files.length === 0) return;
+            
+            // Filter for PDF files only
+            const pdfFiles = files.filter(file => file.type === 'application/pdf');
+            
+            if (pdfFiles.length === 0) {
+                showStatus('Please select PDF files only', 'error');
+                return;
+            }
+            
+            uploadedFiles = pdfFiles;
+            
+            // Update file list display
+            fileList.innerHTML = '';
+            pdfFiles.forEach(file => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'status-message status-success';
+                fileItem.innerHTML = `
+                    <i class="fas fa-file-pdf"></i>
+                    <span>${file.name} (${formatFileSize(file.size)})</span>
+                `;
+                fileList.appendChild(fileItem);
+            });
+            
+            // Enable process button
+            processBtn.disabled = false;
+            
+            showStatus(`Selected ${pdfFiles.length} PDF file(s)`, 'success');
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        async function processDocuments() {
+            if (uploadedFiles.length === 0) {
+                showStatus('Please select at least one PDF file', 'error');
+                return;
+            }
+            
+            showStatus('Processing documents...', 'warning');
+            processBtn.disabled = true;
+            processBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Processing...</span>';
+            
+            const formData = new FormData();
+            uploadedFiles.forEach(file => {
+                formData.append('files', file);
+            });
+            
+            try {
+                const response = await fetch('/upload-pdfs', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showStatus(result.message, 'success');
+                    messageInput.disabled = false;
+                    sendBtn.disabled = false;
+                    
+                    // Create a new session if none exists
+                    if (!currentSessionId) {
+                        createNewSession();
+                    }
+                } else {
+                    showStatus(`Error: ${result.detail}`, 'error');
+                    processBtn.disabled = false;
+                }
+            } catch (error) {
+                showStatus(`Network error: ${error.message}`, 'error');
+                processBtn.disabled = false;
+            } finally {
+                processBtn.innerHTML = '<i class="fas fa-cog"></i><span>Process Documents</span>';
+            }
+        }
+        
+        async function createNewSession() {
+            try {
+                const response = await fetch('/sessions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: 'Chat ' + (Object.keys(sessions).length + 1)
+                    })
+                });
+                
+                if (response.ok) {
+                    const session = await response.json();
+                    sessions[session.id] = session;
+                    
+                    // Render sessions and switch to the new one
+                    renderSessions();
+                    switchSession(session.id);
+                    
+                    // Hide welcome message
+                    welcomeMessage.style.display = 'none';
+                    
+                    currentSessionElement.textContent = sessions[session.id].name;
+                } else {
+                    throw new Error('Failed to create session');
+                }
+            } catch (error) {
+                showStatus('Failed to create a new session. Please try again.', 'error');
+            }
+        }
+        
+        async function switchSession(sessionId) {
+            try {
+                const response = await fetch(`/sessions/${sessionId}`);
+                if (response.ok) {
+                    const session = await response.json();
+                    sessions[sessionId] = session;
+                    currentSessionId = sessionId;
+                    currentSessionElement.textContent = session.name;
+                    
+                    // Clear chat container
+                    chatContainer.innerHTML = '';
+                    
+                    // Add messages for this session
+                    session.messages.forEach(msg => {
+                        addMessageToChat(msg.content, msg.role, msg.timestamp);
+                    });
+                    
+                    // Hide welcome message if there are messages
+                    if (session.messages.length > 0) {
+                        welcomeMessage.style.display = 'none';
+                    } else {
+                        welcomeMessage.style.display = 'block';
+                    }
+                    
+                    // Update session list highlighting
+                    document.querySelectorAll('.session-item').forEach(item => {
+                        if (item.dataset.sessionId === sessionId) {
+                            item.classList.add('active');
+                        } else {
+                            item.classList.remove('active');
+                        }
+                    });
+                    
+                    // Announce to screen reader
+                    announceToScreenReader(`Switched to session: ${session.name}`);
+                    
+                    // Close sidebar on mobile after selection
+                    if (window.innerWidth <= 900) {
+                        sidebar.classList.remove('open');
+                    }
+                } else {
+                    throw new Error('Failed to load session');
+                }
+            } catch (error) {
+                showStatus('Failed to load the session. Please try again.', 'error');
+            }
+        }
+        
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message || !currentSessionId) return;
+            
+            // Add user message to chat
+            const timestamp = new Date().toISOString();
+            addMessageToChat(message, 'user', timestamp);
+            
+            // Clear input and disable while processing
+            messageInput.value = '';
+            messageInput.disabled = true;
+            sendBtn.disabled = true;
+            sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Sending...</span>';
+            
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        session_id: currentSessionId
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addMessageToChat(data.response, 'assistant', new Date().toISOString(), true);
+                    
+                    // Update the session with the new messages
+                    if (sessions[currentSessionId]) {
+                        sessions[currentSessionId].messages = data.messages;
+                    }
+                    
+                    // Announce to screen reader
+                    announceToScreenReader('Response received');
+                } else {
+                    throw new Error(data.detail || 'Unknown error');
+                }
+            } catch (error) {
+                addMessageToChat(`Sorry, I encountered an error: ${error.message}`, 'assistant', new Date().toISOString());
+            } finally {
+                // Re-enable input
+                messageInput.disabled = false;
+                sendBtn.disabled = false;
+                sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i><span>Send</span>';
+                messageInput.focus();
+            }
+        }
+        
+        function addMessageToChat(message, role, timestamp, hasSources = false) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message');
+            messageElement.classList.add(role === 'user' ? 'user-message' : 'bot-message');
+            
+            const time = new Date(timestamp).toLocaleTimeString();
+            
+            let sourcesHtml = '';
+            if (hasSources && role === 'assistant') {
+                sourcesHtml = `
+                    <div class="message-sources">
+                        <i class="fas fa-file-alt"></i>
+                        <span>Based on document content</span>
+                    </div>
+                `;
+            }
+            
+            messageElement.innerHTML = `
+                <div class="message-content">${message}</div>
+                ${sourcesHtml}
+                <div class="message-time">${time}</div>
+            `;
+            
+            chatContainer.appendChild(messageElement);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            
+            // Hide welcome message when messages are added
+            welcomeMessage.style.display = 'none';
+        }
+        
+        function loadSettings() {
+            const savedSettings = localStorage.getItem('chatbotSettings');
+            if (savedSettings) {
+                const settings = JSON.parse(savedSettings);
+                modelSelect.value = settings.model || 'gemini-pro';
+                temperatureSlider.value = settings.temperature || 0.7;
+                temperatureValue.textContent = settings.temperature || 0.7;
+                maxTokensInput.value = settings.maxTokens || 1000;
+            }
+        }
+        
+        function saveSettings() {
+            const settings = {
+                model: modelSelect.value,
+                temperature: parseFloat(temperatureSlider.value),
+                maxTokens: parseInt(maxTokensInput.value)
+            };
+            
+            localStorage.setItem('chatbotSettings', JSON.stringify(settings));
+            
+            showStatus('Settings saved successfully', 'success');
+            
+            // Send settings to backend if needed
+            sendSettingsToBackend(settings);
+        }
+        
+        async function sendSettingsToBackend(settings) {
+            try {
+                const response = await fetch('/settings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(settings)
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to save settings on server');
+                }
+            } catch (error) {
+                console.error('Error saving settings to backend:', error);
+            }
+        }
+        
+        async function loadSessions() {
+            try {
+                const response = await fetch('/sessions');
+                if (response.ok) {
+                    const sessionsData = await response.json();
+                    sessions = {};
+                    
+                    sessionsData.forEach(session => {
+                        sessions[session.id] = session;
+                    });
+                    
+                    renderSessions();
+                    
+                    // If there are sessions, activate the most recent one
+                    const sessionIds = Object.keys(sessions);
+                    if (sessionIds.length > 0) {
+                        const latestSession = sessionIds.reduce((latest, current) => {
+                            return new Date(sessions[current].created_at) > new Date(sessions[latest].created_at) 
+                                ? current : latest;
+                        }, sessionIds[0]);
+                        
+                        switchSession(latestSession);
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading sessions:', error);
+                sessions = {};
+            }
+        }
+        
+        function renderSessions() {
+            sessionsList.innerHTML = '';
+            
+            // Sort sessions by creation date (newest first)
+            const sortedSessions = Object.values(sessions).sort((a, b) => {
+                return new Date(b.created_at) - new Date(a.created_at);
+            });
+            
+            sortedSessions.forEach(session => {
+                const sessionElement = document.createElement('div');
+                sessionElement.classList.add('session-item');
+                if (session.id === currentSessionId) {
+                    sessionElement.classList.add('active');
+                }
+                sessionElement.dataset.sessionId = session.id;
+                
+                // Format date for display
+                const createdDate = new Date(session.created_at);
+                const formattedDate = createdDate.toLocaleDateString() + ' ' + createdDate.toLocaleTimeString();
+                
+                sessionElement.innerHTML = `
+                    <div class="session-info">
+                        <div class="session-name">${session.name}</div>
+                        <div class="session-date">${formattedDate}</div>
+                    </div>
+                    <div class="session-actions">
+                        <button class="session-btn delete-session" data-session-id="${session.id}" aria-label="Delete session ${session.name}">
+                            <i class="fas fa-trash"></i>
+                            <span class="sr-only">Delete ${session.name}</span>
+                        </button>
+                    </div>
+                `;
+                
+                sessionElement.addEventListener('click', (e) => {
+                    if (!e.target.closest('.session-actions')) {
+                        switchSession(session.id);
+                    }
+                });
+                
+                const deleteBtn = sessionElement.querySelector('.delete-session');
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    deleteSession(session.id);
+                });
+                
+                sessionsList.appendChild(sessionElement);
+            });
+        }
+        
+        async function deleteSession(sessionId) {
+            if (confirm('Are you sure you want to delete this chat session? All messages will be lost.')) {
+                try {
+                    const response = await fetch(`/sessions/${sessionId}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    if (response.ok) {
+                        delete sessions[sessionId];
+                        
+                        if (currentSessionId === sessionId) {
+                            currentSessionId = null;
+                            currentSessionElement.textContent = 'No active session';
+                            chatContainer.innerHTML = '';
+                            welcomeMessage.style.display = 'block';
+                            messageInput.disabled = true;
+                            sendBtn.disabled = true;
+                        }
+                        
+                        renderSessions();
+                    } else {
+                        throw new Error('Failed to delete session');
+                    }
+                } catch (error) {
+                    showStatus('Failed to delete the session. Please try again.', 'error');
+                }
+            }
+        }
+        
+        function showStatus(message, type) {
+            uploadStatus.innerHTML = `
+                <div class="status-message status-${type}">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+                    <span>${message}</span>
+                </div>
+            `;
+        }
+        
+        function announceToScreenReader(message) {
+            const statusEl = document.getElementById('a11y-status');
+            statusEl.textContent = message;
+            
+            // Clear the message after a short delay
+            setTimeout(() => {
+                statusEl.textContent = '';
+            }, 1000);
+        }
+        
+        // Backend health check
+        async function checkBackendHealth() {
+            try {
+                const response = await fetch('/health');
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log("Backend health:", data);
+                    return true;
+                }
+                return false;
+            } catch (error) {
+                console.error("Backend health check failed:", error);
+                showStatus('Cannot connect to the server. Please make sure the backend is running.', 'error');
+                return false;
+            }
+        }
+        
+        // Initialize on page load
+        window.addEventListener('load', async () => {
+            const isHealthy = await checkBackendHealth();
+            if (!isHealthy) {
+                // Disable UI elements if backend is not available
+                processBtn.disabled = true;
+                newChatBtn.disabled = true;
+                saveSettingsBtn.disabled = true;
+            }
+        });
+    </script>
+</body>
+</html>

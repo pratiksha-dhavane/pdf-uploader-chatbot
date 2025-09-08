@@ -1,0 +1,13 @@
+pandas==2.2.3
+fastapi
+uvicorn
+python-multipart
+google-generativeai
+llama-index
+llama-index-embeddings-google
+llama-index-vector-stores-faiss
+faiss-cpu
+PyPDF2
+llama-index-llms-google-genai
+llama-index-embeddings-google-genai
+llama-index-embeddings-gemini
