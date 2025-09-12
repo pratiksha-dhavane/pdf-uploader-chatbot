@@ -11,3 +11,5 @@ PyPDF2
 llama-index-llms-google-genai
 llama-index-embeddings-google-genai
 llama-index-embeddings-gemini
+sentence-transformers
+llama-index-embeddings-huggingface

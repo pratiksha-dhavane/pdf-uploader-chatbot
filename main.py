@@ -3,11 +3,11 @@ import uuid
 import logging
 import json
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Literal
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import google.generativeai as genai
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, StorageContext
 from llama_index.core import Settings
@@ -20,6 +20,9 @@ from dotenv import load_dotenv
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel as BaseModelSettings
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+import time
+from functools import wraps
 
 load_dotenv()
 
@@ -46,23 +49,114 @@ if not GOOGLE_API_KEY:
 
 genai.configure(api_key=GOOGLE_API_KEY)
 
-# model for settings
+# Model for settings with dropdown options
 class SettingsModel(BaseModelSettings):
-    model: str = "gemini-pro"
-    temperature: float = 0.7
-    max_tokens: int = 1000
-
-# Set Gemini as the default LLM and embedding model
-try:
-    Settings.llm = Gemini(model="gemini-1.5-flash", api_key=GOOGLE_API_KEY)
-    Settings.embed_model = GeminiEmbedding(
-        model_name="models/embedding-001", 
-        api_key=GOOGLE_API_KEY
+    model: Literal["gemini-1.5-pro", "gemini-1.5-flash"] = Field(
+        default="gemini-1.5-pro",
+        description="Select the Gemini model to use for generating responses"
     )
-    logger.info("Successfully configured Gemini LLM and embedding models")
+    temperature: float = Field(
+        default=0.7, 
+        ge=0.0, 
+        le=1.0,
+        description="Controls randomness: Lower = more deterministic, Higher = more creative"
+    )
+    max_tokens: int = Field(
+        default=1000,
+        ge=1,
+        le=8192,
+        description="Maximum number of tokens to generate in the response"
+    )
+
+# Global variables
+vector_index = None
+chat_sessions = {}
+current_settings = SettingsModel()  # Initialize with default settings
+
+# Create data directory if it doesn't exist
+os.makedirs("data", exist_ok=True)
+SESSIONS_FILE = "data/sessions.json"
+SETTINGS_FILE = "data/settings.json"
+
+# Load settings from file
+def load_settings():
+    global current_settings
+    try:
+        if os.path.exists(SETTINGS_FILE):
+            with open(SETTINGS_FILE, 'r') as f:
+                file_content = f.read().strip()
+                if file_content:
+                    settings_data = json.loads(file_content)
+                    current_settings = SettingsModel(**settings_data)
+                    logger.info(f"Loaded settings: {current_settings.dict()}")
+                else:
+                    current_settings = SettingsModel()
+                    logger.info("Settings file is empty, using default settings")
+        else:
+            current_settings = SettingsModel()
+            logger.info("No settings file found, using default settings")
+    except Exception as e:
+        logger.error(f"Error loading settings: {str(e)}")
+        current_settings = SettingsModel()
+
+# Save settings to file
+def save_settings():
+    try:
+        with open(SETTINGS_FILE, 'w') as f:
+            json.dump(current_settings.dict(), f, indent=2)
+        logger.info(f"Saved settings: {current_settings.dict()}")
+    except Exception as e:
+        logger.error(f"Error saving settings: {str(e)}")
+
+# To reduce api call to avoid hitting api limits
+def rate_limited(max_per_minute):
+    min_interval = 60.0 / max_per_minute
+    def decorator(func):
+        last_time_called = [0.0]
+        @wraps(func)
+        def rate_limited_function(*args, **kwargs):
+            elapsed = time.time() - last_time_called[0]
+            left_to_wait = min_interval - elapsed
+            if left_to_wait > 0:
+                time.sleep(left_to_wait)
+            ret = func(*args, **kwargs)
+            last_time_called[0] = time.time()
+            return ret
+        return rate_limited_function
+    return decorator
+
+# Update LLM settings based on current configuration
+def update_llm_settings():
+    try:
+        Settings.llm = Gemini(
+            model=current_settings.model, 
+            api_key=GOOGLE_API_KEY, 
+            temperature=current_settings.temperature, 
+            max_tokens=current_settings.max_tokens
+        )
+        logger.info(f"Updated LLM settings: {current_settings.dict()}")
+    except Exception as e:
+        logger.error(f"Error updating LLM settings: {str(e)}")
+        raise
+
+# Set Gemini as the default embedding model
+try:
+    # Settings.embed_model = GeminiEmbedding(
+    #     model_name="models/embedding-001", 
+    #     api_key=GOOGLE_API_KEY
+    # )
+    Settings.embed_model = HuggingFaceEmbedding(
+        model_name="BAAI/bge-small-en-v1.5"
+    )
+    logger.info("Successfully configured embedding model")
 except Exception as e:
-    logger.error(f"Error configuring Gemini: {str(e)}")
+    logger.error(f"Error configuring embedding model: {str(e)}")
     raise
+
+# Apply rate limiting to your embedding function
+@rate_limited(60)  # 60 calls per minute
+def get_embedding_with_rate_limit(text):
+    return Settings.embed_model.get_text_embedding(text)
 
 # Custom prompt template for RAG
 custom_prompt = PromptTemplate(
@@ -80,15 +174,7 @@ custom_prompt = PromptTemplate(
     "Answer:"
 )
 
-# Global variables
-vector_index = None
-chat_sessions = {}
-
-# Create data directory if it doesn't exist
-os.makedirs("data", exist_ok=True)
-SESSIONS_FILE = "data/sessions.json"
-
-# In the load_sessions function, add more detailed error handling:
+# Load sessions on startup
 def load_sessions():
     global chat_sessions
     try:
@@ -117,13 +203,10 @@ def save_sessions():
     except Exception as e:
         logger.error(f"Error saving sessions: {str(e)}")
 
-# Format conversation history for the prompt
-def format_history(messages):
-    history_str = ""
-    for msg in messages[-6:]:  # Include last 6 messages for context
-        role = "User" if msg["role"] == "user" else "Assistant"
-        history_str += f"{role}: {msg['content']}\n"
-    return history_str
+# Load settings and sessions on startup
+load_settings()
+update_llm_settings()  # Apply settings to LLM
+load_sessions()
 
 # Pydantic models
 class ChatRequest(BaseModel):
@@ -143,23 +226,6 @@ class Session(BaseModel):
     name: str
     created_at: str
     messages: List[Dict[str, Any]]
-
-# To load settings on startup
-def load_settings():
-    try:
-        if os.path.exists("data/settings.json"):
-            with open("data/settings.json", "r") as f:
-                return json.load(f)
-        return {}
-    except Exception as e:
-        logger.error(f"Error loading settings: {str(e)}")
-        return {}
-
-# Call this function when initializing your app
-app_settings = load_settings()
-
-# Load sessions on startup
-load_sessions()
 
 @app.get("/")
 def get_home():
@@ -195,7 +261,7 @@ async def upload_pdfs(files: List[UploadFile] = File(...)):
         documents = SimpleDirectoryReader(upload_dir).load_data()
         
         # Create FAISS vector store
-        dimension = 768  # Gemini embedding dimension
+        dimension = 384
         faiss_index = faiss.IndexFlatL2(dimension)
         vector_store = FaissVectorStore(faiss_index=faiss_index)
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
@@ -222,11 +288,6 @@ async def chat(chat_request: ChatRequest):
         if vector_index is None:
             raise HTTPException(status_code=400, detail="Please upload PDF files first")
         
-        # Get settings
-        settings = load_settings()
-        temperature = settings.get('temperature', 0.7)
-        max_tokens = settings.get('max_tokens', 1000)
-        
         # Get or create session
         session_id = chat_request.session_id
         if session_id not in chat_sessions:
@@ -240,13 +301,10 @@ async def chat(chat_request: ChatRequest):
         }
         chat_sessions[session_id]["messages"].append(user_message)
         
-        # Create query engine with custom prompt and settings
+        # Create query engine with custom prompt
         query_engine = vector_index.as_query_engine(
             text_qa_template=custom_prompt,
-            similarity_top_k=3,
-            # Apply settings if your LLM supports them
-            temperature=temperature,
-            max_tokens=max_tokens
+            similarity_top_k=3
         )
         
         # Query the index
@@ -357,9 +415,14 @@ async def delete_session(session_id: str):
 @app.post("/settings")
 async def update_settings(settings: SettingsModel):
     try:
-        # Save settings to a file
-        with open("data/settings.json", "w") as f:
-            json.dump(settings.dict(), f)
+        global current_settings
+        current_settings = settings
+        
+        # Update the LLM with new settings
+        update_llm_settings()
+        
+        # Save settings to file
+        save_settings()
         
         logger.info(f"Settings updated: {settings.dict()}")
         
@@ -367,7 +430,11 @@ async def update_settings(settings: SettingsModel):
     except Exception as e:
         logger.error(f"Error updating settings: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error updating settings: {str(e)}")
-    
+
+@app.get("/settings")
+async def get_settings():
+    return current_settings.dict()
+
 @app.get("/health")
 async def health_check():
     return {
